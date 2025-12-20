@@ -1,0 +1,182 @@
+name:  Kernel Build
+
+on: 
+  workflow_dispatch:
+
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+
+jobs:
+  build:
+    name: Build Kernel
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        model: [c2s]
+        variant: [ksu, susfs, vanilla]
+
+    steps:
+      # (1) Checkout repository without submodules
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # (2) Install build dependencies
+      - name: Set up build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git-core gnupg flex bison build-essential zip curl \
+            zlib1g-dev libc6-dev-i386 x11proto-core-dev \
+            libx11-dev lib32z1-dev libgl1-mesa-dev \
+            libxml2-utils xsltproc unzip fontconfig cpio
+
+      # (3) Set build flags by variant
+      - name: Set build flags
+        id: vars
+        run: |
+          case "${{ matrix.variant }}" in
+            ksu)
+              echo "FLAGS=-k y" >> $GITHUB_OUTPUT
+              ;;
+            susfs)
+              echo "FLAGS=-k y -s y" >> $GITHUB_OUTPUT
+              ;;
+            vanilla)
+              echo "FLAGS=-k n" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      # (4) Build kernel
+      - name: Run kernel build
+        run: |
+          chmod +x ./build.sh
+          ./build.sh -m ${{ matrix.model }} ${{ steps.vars.outputs.FLAGS }}
+
+      # (5) Extract and prepare artifact
+      - name:  Prepare artifact
+        id: artifact_name
+        run: |
+          ZIP_FILE=$(ls build/out/${{ matrix.model }}/*.zip | head -n 1)
+          ARTIFACT_NAME=$(basename "$ZIP_FILE" .zip)
+          
+          # Unzip to a temporary directory
+          mkdir -p "artifact-content/$ARTIFACT_NAME"
+          unzip -q "$ZIP_FILE" -d "artifact-content/$ARTIFACT_NAME"
+          
+          echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+          echo "Prepared artifact: $ARTIFACT_NAME"
+
+      # (6) Upload kernel artifact
+      - name: Upload kernel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact_name.outputs.name }}
+          path: artifact-content/${{ steps.artifact_name. outputs.name }}/*
+
+      # (7) Save meta information for release
+      - name:  Save meta information
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          if [ -d "build/meta" ]; then
+            mkdir -p release-meta
+            cp -r build/meta/* release-meta/
+          fi
+
+      # (8) Upload meta for release job only
+      - name: Upload meta for release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name:  meta-${{ matrix.variant }}
+          path: release-meta/*
+          retention-days: 1
+
+  release:
+    name:  Publish GitHub Release
+    if:  startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on:  ubuntu-latest
+
+    steps: 
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with: 
+          path: artifacts
+
+      - name: Generate release notes
+        run:  |
+          set -e
+
+          KSU_MAIN="N/A"
+          KSU_SUSFS="N/A"
+          SUSFS_VERSION="N/A"
+
+          # Find meta files
+          for meta_dir in artifacts/meta-*/; do
+            if [ -f "$meta_dir/ksu-main.env" ]; then
+              source "$meta_dir/ksu-main.env"
+              KSU_MAIN="$KSU_MAIN_VERSION"
+            fi
+            
+            if [ -f "$meta_dir/ksu-susfs.env" ]; then
+              source "$meta_dir/ksu-susfs.env"
+              KSU_SUSFS="$KSU_SUSFS_VERSION"
+              SUSFS_VERSION="$SUSFS_VERSION"
+            fi
+          done
+
+          cat > release. md <<EOF
+          Kernel Information
+          - Kernel Version: Linux 4.19.325
+
+          KernelSU Integration
+          - KernelSU (main)
+            - Version: $KSU_MAIN
+            - Branch: main
+
+          - KernelSU + SuSFS
+            - Version: $KSU_SUSFS
+            - Branch: susfs-rksu-master
+            - SuSFS Version: $SUSFS_VERSION
+
+          Build Variants
+          1. RKSU
+          2. RKSU + SuSFS
+          3. Vanilla (no KernelSU)
+
+          Build Notes
+          - Built via GitHub Actions
+          - Version info extracted from build/meta
+          EOF
+
+      - name: Repackage for release
+        run: |
+          mkdir -p release-files
+          
+          # Repackage each artifact (excluding meta)
+          for artifact_dir in artifacts/ExtremeKRNL-*/; do
+            if [[ !  "$artifact_dir" =~ meta- ]]; then
+              ARTIFACT_NAME=$(basename "$artifact_dir")
+              echo "Packaging $ARTIFACT_NAME..."
+              cd "$artifact_dir"
+              zip -r "../../release-files/${ARTIFACT_NAME}.zip" . 
+              cd ../.. 
+            fi
+          done
+          
+          ls -lh release-files/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ExtremeKRNL ${{ github. ref_name }}
+          body_path: release.md
+          files: release-files/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
