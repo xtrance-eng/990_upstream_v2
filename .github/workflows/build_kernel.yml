@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: [xlslte, x1s, y2slte, y2s, z3s, clslte, c1s, c2slte, c2s, r8s]
+        model: [x1slte, x1s, y2slte, y2s, z3s, c1slte, c1s, c2slte, c2s, r8s]
         variant: [ksu, susfs, vanilla]
 
     steps:
