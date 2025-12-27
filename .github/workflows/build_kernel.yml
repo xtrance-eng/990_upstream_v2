@@ -15,7 +15,7 @@ jobs:
     strategy:  
       fail-fast: false
       matrix:
-        model: ${{ startsWith(github.ref, 'refs/tags/') && fromJSON('["x1slte", "x1s", "y2slte", "y2s", "z3s", "c1slte", "c1s", "c2slte", "c2s", "r8s"]') || fromJSON('["c2s"]') }}
+        model: [x1slte, x1s, y2slte, y2s, z3s, c1slte, c1s, c2slte, c2s, r8s]
         variant: [ksu, susfs, vanilla]
 
     steps: 
@@ -75,29 +75,8 @@ jobs:
       - name: Upload kernel artifact
         uses:  actions/upload-artifact@v4
         with:
-          name:  ${{ steps.artifact_name. outputs.name }}
+          name:  ${{ steps.artifact_name.outputs.name }}
           path: artifact-content/${{ steps.artifact_name.outputs.name }}/*
-
-      # (7) Save meta information for release (KSU/SUSFS only)
-      - name: Save meta information
-        id: save_meta
-        run:  |
-          if [ -d "build/meta" ] && [ -n "$(ls -A build/meta 2>/dev/null)" ]; then
-            mkdir -p release-meta
-            cp -r build/meta/* release-meta/
-            echo "has_meta=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_meta=false" >> $GITHUB_OUTPUT
-          fi
-
-      # (8) Upload meta for release job only
-      - name: Upload meta for release
-        if: startsWith(github.ref, 'refs/tags/') && matrix.variant != 'vanilla' && steps.save_meta.outputs.has_meta == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: .meta-${{ matrix.model }}-${{ matrix.variant }}
-          path: release-meta/*
-          retention-days: 1
 
   release:
     name: Publish GitHub Release
@@ -109,38 +88,18 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with: 
-          pattern: .meta-*
-          path: meta-artifacts
+          pattern: ExtremeKRNL-*
+          path: kernel-artifacts
 
       - name: Generate release notes
         run:  |
-          set -e
-
-          KSU_MAIN="N/A"
-          KSU_SUSFS="N/A"
-          SUSFS_VERSION="N/A"
-
-          # Find meta files (pick first available)
-          for meta_dir in artifacts/meta-*/; do
-            if [ -f "$meta_dir/ksu-main.env" ]; then
-              source "$meta_dir/ksu-main.env"
-              KSU_MAIN="$KSU_MAIN_VERSION"
-              break
-            fi
-          done
-          
-          for meta_dir in artifacts/meta-*/; do
-            if [ -f "$meta_dir/ksu-susfs.env" ]; then
-              source "$meta_dir/ksu-susfs.env"
-              KSU_SUSFS="$KSU_SUSFS_VERSION"
-              SUSFS_VERSION="$SUSFS_VERSION"
-              break
-            fi
-          done
-
           cat > release.md <<EOF
           Kernel Information
           - Kernel Version: Linux 4.19.325
+          - SuSFS Version: 2.0.0
+          - RKSU main Version: 32391
+          - RKSU susfs-rksu-master Version: 32359
+          - Build Date: $(date +%Y-%m-%d)
 
           Supported Devices
           - Galaxy S20 (x1slte)
@@ -154,16 +113,6 @@ jobs:
           - Galaxy N20 Ultra 5G (c2s)
           - Galaxy S20 FE (r8s)
 
-          KernelSU Integration
-          - KernelSU (main)
-            - Version: $KSU_MAIN
-            - Branch: main
-
-          - KernelSU + SuSFS
-            - Version:  $KSU_SUSFS
-            - Branch: susfs-rksu-master
-            - SuSFS Version: $SUSFS_VERSION
-
           Build Variants
           1. RKSU
           2. RKSU + SuSFS
@@ -174,35 +123,27 @@ jobs:
           - Total builds: 30 (10 models x 3 variants)
           EOF
 
-      - name: Download kernel artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: ExtremeKRNL-*
-          path: kernel-artifacts
-
-      - name: Repackage for release
+      - name:  Repackage for release
         run: |
           mkdir -p release-files
           
-          # Repackage each artifact (excluding meta)
-          for artifact_dir in artifacts/ExtremeKRNL-*/; do
-            if [[ !  "$artifact_dir" =~ meta- ]]; then
-              ARTIFACT_NAME=$(basename "$artifact_dir")
-              echo "Packaging $ARTIFACT_NAME..."
-              cd "$artifact_dir"
-              zip -r "../../release-files/${ARTIFACT_NAME}.zip". 
-              cd ../..
-            fi
+          # Repackage each artifact
+          for artifact_dir in kernel-artifacts/ExtremeKRNL-*/; do
+            ARTIFACT_NAME=$(basename "$artifact_dir")
+            echo "Packaging $ARTIFACT_NAME..."
+            cd "$artifact_dir"
+            zip -r "../../release-files/${ARTIFACT_NAME}.zip" .
+            cd ../..
           done
           
           echo "Release files:"
           ls -lh release-files/
 
-      - name: Create GitHub Release
+      - name:  Create GitHub Release
         uses: softprops/action-gh-release@v2
-        with:
-          tag_name:  ${{ github.ref_name }}
-          name:  ExtremeKRNL ${{ github.ref_name }}
+        with: 
+          tag_name: ${{ github.ref_name }}
+          name: ExtremeKRNL ${{ github.ref_name }}
           body_path: release.md
           files: release-files/*.zip
         env:

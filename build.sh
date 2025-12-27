@@ -94,26 +94,6 @@ if [ "$KSU_OPTION" == "y" ]; then
 	ln -sf ../KernelSU/kernel drivers/kernelsu
 fi
 
-# KernelSU / SuSFS version detect
-if [[ "$KSU_OPTION" == "y" ]]; then
-    if [[ "$SUSFS_OPTION" == "y" ]]; then
-        # susfs-rksu-master
-        KSU_VERSION=$(grep -E '^KSU_VERSION=' KernelSU/kernel/Makefile | cut -d= -f2)
-        KSU_BRANCH=$(grep -E '^KSU_GIT_BRANCH=' KernelSU/kernel/Makefile | cut -d= -f2 | tr -d '"')
-
-        SUSFS_VERSION=$(grep -E '^#define SUSFS_VERSION' include/linux/susfs.h \
-            | awk '{print $3}' | tr -d '"')
-    else
-        # main
-        pushd KernelSU/kernel > /dev/null || exit 1
-        COUNT=$(git rev-list --count HEAD)
-        KSU_VERSION=$((30000 + COUNT))
-        KSU_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-        popd > /dev/null
-    fi
-fi
-
-
 echo "Preparing the build environment..."
 
 pushd "$(dirname "$0")" > /dev/null
@@ -349,40 +329,6 @@ if [ -z "$RECOVERY" ] && [ -z "$DTBS" ]; then
     fi
     zip -r -qq ../"$NAME" .
     popd > /dev/null
-fi
-
-mkdir -p build/meta
-
-if [[ "$KSU_OPTION" == "y" && "$SUSFS_OPTION" != "y" ]]; then
-    {
-        echo "KSU_VERSION=$KSU_VERSION"
-        echo "KSU_BRANCH=$KSU_BRANCH"
-    } > build/meta/ksu-main.env
-fi
-
-if [[ "$KSU_OPTION" == "y" && "$SUSFS_OPTION" == "y" ]]; then
-    {
-        echo "KSU_VERSION=$KSU_VERSION"
-        echo "KSU_BRANCH=$KSU_BRANCH"
-        echo "SUSFS_VERSION=$SUSFS_VERSION"
-    } > build/meta/ksu-susfs.env
-fi
-
-echo
-
-if [[ "$KSU_OPTION" == "y" ]]; then
-    if [[ "$SUSFS_OPTION" == "y" ]]; then
-        echo "-------------- KernelSU / SuSFS ---------------"
-        echo "KSU_VERSION=$KSU_VERSION"
-        echo "KSU_BRANCH=$KSU_BRANCH"
-        echo "SusFS Version=$SUSFS_VERSION"
-        echo "-----------------------------------------------"
-    else
-        echo "---------------- KernelSU ---------------------"
-        echo "KSU_VERSION=$KSU_VERSION"
-        echo "KSU_BRANCH=$KSU_BRANCH"
-        echo "-----------------------------------------------"
-    fi
 fi
 
 popd > /dev/null
