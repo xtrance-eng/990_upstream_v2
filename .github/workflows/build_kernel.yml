@@ -1,0 +1,150 @@
+name: Kernel Build
+
+on: 
+  workflow_dispatch: 
+
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+
+jobs: 
+  build:
+    name:  Build Kernel
+    runs-on: ubuntu-latest
+
+    strategy:  
+      fail-fast: false
+      matrix:
+        model: [x1slte, x1s, y2slte, y2s, z3s, c1slte, c1s, c2slte, c2s, r8s]
+        variant: [ksu, susfs, vanilla]
+
+    steps: 
+      # (1) Checkout repository without submodules
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # (2) Install build dependencies
+      - name: Set up build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git-core gnupg flex bison build-essential zip curl \
+            zlib1g-dev libc6-dev-i386 x11proto-core-dev \
+            libx11-dev lib32z1-dev libgl1-mesa-dev \
+            libxml2-utils xsltproc unzip fontconfig cpio
+
+      # (3) Set build flags by variant
+      - name: Set build flags
+        id: vars
+        run:  |
+          case "${{ matrix.variant }}" in
+            ksu)
+              echo "FLAGS=-k y" >> $GITHUB_OUTPUT
+              ;;
+            susfs)
+              echo "FLAGS=-k y -s y" >> $GITHUB_OUTPUT
+              ;;
+            vanilla)
+              echo "FLAGS=-k n" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      # (4) Build kernel
+      - name: Run kernel build
+        run: |
+          chmod +x ./build.sh
+          ./build.sh -m ${{ matrix.model }} ${{ steps.vars.outputs.FLAGS }}
+
+      # (5) Extract and prepare artifact
+      - name:  Prepare artifact
+        id: artifact_name
+        run: |
+          ZIP_FILE=$(ls build/out/${{ matrix.model }}/*.zip | head -n 1)
+          ARTIFACT_NAME=$(basename "$ZIP_FILE" .zip)
+          
+          # Unzip to a temporary directory
+          mkdir -p "artifact-content/$ARTIFACT_NAME"
+          unzip -q "$ZIP_FILE" -d "artifact-content/$ARTIFACT_NAME"
+          
+          echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+          echo "Prepared artifact: $ARTIFACT_NAME"
+
+      # (6) Upload kernel artifact
+      - name: Upload kernel artifact
+        uses:  actions/upload-artifact@v4
+        with:
+          name:  ${{ steps.artifact_name.outputs.name }}
+          path: artifact-content/${{ steps.artifact_name.outputs.name }}/*
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps: 
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with: 
+          pattern: ExtremeKRNL-*
+          path: kernel-artifacts
+
+      - name: Generate release notes
+        run:  |
+          cat > release.md <<EOF
+          Kernel Information
+          - Kernel Version: Linux 4.19.325
+          - SuSFS Version: 2.0.0
+          - RKSU main Version: 32391
+          - RKSU susfs-rksu-master Version: 32359
+          - Build Date: $(date +%Y-%m-%d)
+
+          Supported Devices
+          - Galaxy S20 (x1slte)
+          - Galaxy S20 5G (x1s)
+          - Galaxy S20+ (y2slte)
+          - Galaxy S20+ 5G (y2s)
+          - Galaxy S20 Ultra 5G (z3s)
+          - Galaxy N20 (c1slte)
+          - Galaxy N20 5G (c1s)
+          - Galaxy N20 Ultra (c2slte)
+          - Galaxy N20 Ultra 5G (c2s)
+          - Galaxy S20 FE (r8s)
+
+          Build Variants
+          1. RKSU
+          2. RKSU + SuSFS
+          3. Vanilla (no KernelSU)
+
+          Build Notes
+          - Built via GitHub Actions
+          - Total builds: 30 (10 models x 3 variants)
+          EOF
+
+      - name:  Repackage for release
+        run: |
+          mkdir -p release-files
+          
+          # Repackage each artifact
+          for artifact_dir in kernel-artifacts/ExtremeKRNL-*/; do
+            ARTIFACT_NAME=$(basename "$artifact_dir")
+            echo "Packaging $ARTIFACT_NAME..."
+            cd "$artifact_dir"
+            zip -r "../../release-files/${ARTIFACT_NAME}.zip" .
+            cd ../..
+          done
+          
+          echo "Release files:"
+          ls -lh release-files/
+
+      - name:  Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with: 
+          tag_name: ${{ github.ref_name }}
+          name: ExtremeKRNL ${{ github.ref_name }}
+          body_path: release.md
+          files: release-files/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
