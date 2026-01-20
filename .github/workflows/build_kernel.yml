@@ -4,7 +4,9 @@ on:
   workflow_dispatch: 
 
   push:
-    branches: [ main ]
+    branches:
+      - main
+      - ksun
     tags: [ 'v*' ]
 
 jobs: 
@@ -15,8 +17,176 @@ jobs:
     strategy:  
       fail-fast: false
       matrix:
-        model: [x1slte, x1s, y2slte, y2s, z3s, c1slte, c1s, c2slte, c2s, r8s]
-        variant: [ksu, susfs, vanilla]
+        include:
+          - model: x1slte
+            branch: main
+            variant: ksu
+          - model: x1slte
+            branch: main
+            variant: susfs
+          - model: x1slte
+            branch: main
+            variant: vanilla
+
+          - model: x1s
+            branch: main
+            variant: ksu
+          - model: x1s
+            branch: main
+            variant: susfs
+          - model: x1s
+            branch: main
+            variant: vanilla
+
+          - model: y2slte
+            branch: main
+            variant: ksu
+          - model: y2slte
+            branch: main
+            variant: susfs
+          - model: y2slte
+            branch: main
+            variant: vanilla
+
+          - model: y2s
+            branch: main
+            variant: ksu
+          - model: y2s
+            branch: main
+            variant: susfs
+          - model: y2s
+            branch: main
+            variant: vanilla
+
+          - model: z3s
+            branch: main
+            variant: ksu
+          - model: z3s
+            branch: main
+            variant: susfs
+          - model: z3s
+            branch: main
+            variant: vanilla
+
+          - model: c1slte
+            branch: main
+            variant: ksu
+          - model: c1slte
+            branch: main
+            variant: susfs
+          - model: c1slte
+            branch: main
+            variant: vanilla
+
+          - model: c1s
+            branch: main
+            variant: ksu
+          - model: c1s
+            branch: main
+            variant: susfs
+          - model: c1s
+            branch: main
+            variant: vanilla
+
+          - model: c2slte
+            branch: main
+            variant: ksu
+          - model: c2slte
+            branch: main
+            variant: susfs
+          - model: c2slte
+            branch: main
+            variant: vanilla
+
+          - model: c2s
+            branch: main
+            variant: ksu
+          - model: c2s
+            branch: main
+            variant: susfs
+          - model: c2s
+            branch: main
+            variant: vanilla
+
+          - model: r8s
+            branch: main
+            variant: ksu
+          - model: r8s
+            branch: main
+            variant: susfs
+          - model: r8s
+            branch: main
+            variant: vanilla
+
+          - model: x1slte
+            branch: ksun
+            variant: ksu
+          - model: x1slte
+            branch: ksun
+            variant: susfs
+
+          - model: x1s
+            branch: ksun
+            variant: ksu
+          - model: x1s
+            branch: ksun
+            variant: susfs
+
+          - model: y2slte
+            branch: ksun
+            variant: ksu
+          - model: y2slte
+            branch: ksun
+            variant: susfs
+
+          - model: y2s
+            branch: ksun
+            variant: ksu
+          - model: y2s
+            branch: ksun
+            variant: susfs
+
+          - model: z3s
+            branch: ksun
+            variant: ksu
+          - model: z3s
+            branch: ksun
+            variant: susfs
+
+          - model: c1slte
+            branch: ksun
+            variant: ksu
+          - model: c1slte
+            branch: ksun
+            variant: susfs
+
+          - model: c1s
+            branch: ksun
+            variant: ksu
+          - model: c1s
+            branch: ksun
+            variant: susfs
+
+          - model: c2slte
+            branch: ksun
+            variant: ksu
+          - model: c2slte
+            branch: ksun
+            variant: susfs
+
+          - model: c2s
+            branch: ksun
+            variant: ksu
+          - model: c2s
+            branch: ksun
+            variant: susfs
+
+          - model: r8s
+            branch: ksun
+            variant: ksu
+          - model: r8s
+            branch: ksun
+            variant: susfs
 
     steps: 
       # (1) Checkout repository without submodules
@@ -24,6 +194,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          submodules: recursive
+          ref: ${{ matrix.branch }}
 
       # (2) Install build dependencies
       - name: Set up build environment
@@ -97,9 +269,18 @@ jobs:
           Kernel Information
           - Kernel Version: Linux 4.19.325
           - SuSFS Version: 2.0.0
-          - RKSU main Version: 32391
+          - RKSU main Version: 32424
           - RKSU susfs-rksu-master Version: 32359
+          - KSUN legacy Version: 32943
+          - KSUN legacy-susfs Version: 32943
           - Build Date: $(date +%Y-%m-%d)
+
+          1.2.0 updates:
+          - Added KernelSU Next variants too.
+          You can download RKSU Manager Here for RKSU:
+          https://t.me/rsukrnlsu/1136
+          You can download KSUN Manager Here for KernelSU Next:
+          https://t.me/ksunext_ci/8387
 
           Supported Devices
           - Galaxy S20 (x1slte)
@@ -114,13 +295,15 @@ jobs:
           - Galaxy S20 FE (r8s)
 
           Build Variants
-          1. RKSU
-          2. RKSU + SuSFS
-          3. Vanilla (no KernelSU)
+          1st is the KSU Next Variant.
+          2nd is the KSU Next + SuSFS 2.0.0 variant.
+          3rd is the RKSU Variant.
+          4th is the RKSU + SuSFS 2.0.0 variant.
+          5th is the Vanilla build. fresh kernel, no KSU.
 
           Build Notes
           - Built via GitHub Actions
-          - Total builds: 30 (10 models x 3 variants)
+          - Total builds: 50 (10 models x 5 variants)
           EOF
 
       - name:  Repackage for release
