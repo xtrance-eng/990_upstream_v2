@@ -197,9 +197,11 @@ jobs:
           submodules: recursive
           ref: ${{ matrix.branch }}
 
-      - name: Fetch KernelSU-Next tags
+      - name: Unshallow KernelSU-Next submodule (ksun only)
+        if: matrix.branch == 'ksun'
         run: |
           cd KernelSU-Next
+          git fetch --unshallow || true
           git fetch --force --tags
 
       # (2) Install build dependencies
