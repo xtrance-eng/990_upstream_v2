@@ -69,29 +69,37 @@ if [ "$KSU_OPTION" == "y" ]; then
 
     echo "[*] Switching KernelSU Next to branch: $KSU_BRANCH"
 
-	cd KernelSU-Next || abort
+    cd KernelSU-Next || abort
 
-	echo "[*] Fetching all remote refs for KernelSU Next"
-	git fetch --all --prune || abort
+    echo "[*] Forcing full ref fetch for KernelSU Next (CI safe mode)"
 
-	echo "[*] Available remote branches:"
-	git branch -r
+    # Force submodule to fetch all remote branches (required for CI)
+    git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+    git fetch origin --prune || abort
 
-	if git show-ref --verify --quiet "refs/remotes/origin/$KSU_BRANCH"; then
-	    git checkout -B "$KSU_BRANCH" "origin/$KSU_BRANCH" || abort
-	else
-	    echo "KernelSU remote branch '$KSU_BRANCH' not found after full fetch!"
-	    abort
-	fi
+    echo "[*] Available remote branches:"
+    git branch -r
 
-	cd ..
+    # Verify that the target KernelSU branch exists
+    if git show-ref --verify --quiet "refs/remotes/origin/$KSU_BRANCH"; then
+        git checkout -B "$KSU_BRANCH" "origin/$KSU_BRANCH" || abort
+    else
+        echo "-----------------------------------------------"
+        echo "KernelSU remote branch '$KSU_BRANCH' not found!"
+        echo "Fetched remote branches:"
+        git branch -r
+        echo "-----------------------------------------------"
+        abort
+    fi
 
-	# Ensure drivers/kernelsu symlink points to KernelSU/kernel
-	echo "[*] Setting up drivers/kernelsu symlink"
-	if [ -L "drivers/kernelsu" ] || [ -e "drivers/kernelsu" ]; then
-	    rm -rf drivers/kernelsu
-	fi
-	ln -sf ../KernelSU-Next/kernel drivers/kernelsu
+    cd ..
+
+    # Ensure drivers/kernelsu symlink points to KernelSU/kernel
+    echo "[*] Setting up drivers/kernelsu symlink"
+    if [ -L "drivers/kernelsu" ] || [ -e "drivers/kernelsu" ]; then
+        rm -rf drivers/kernelsu
+    fi
+    ln -sf ../KernelSU-Next/kernel drivers/kernelsu
 fi
 
 echo "Preparing the build environment..."
