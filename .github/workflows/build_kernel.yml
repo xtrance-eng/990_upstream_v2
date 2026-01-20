@@ -197,8 +197,10 @@ jobs:
           submodules: recursive
           ref: ${{ matrix.branch }}
 
-      - name: Fetch tags explicitly
-        run: git fetch --force --tags
+      - name: Fetch KernelSU-Next tags
+        run: |
+          cd KernelSU-Next
+          git fetch --force --tags
 
       # (2) Install build dependencies
       - name: Set up build environment
